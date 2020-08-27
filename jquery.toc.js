@@ -2,6 +2,7 @@
  * Table of Contents jQuery Plugin - jquery.toc
  *
  * Copyright 2013-2016 Nikhil Dabas
+ * Updated 2020 by J Korff
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -19,9 +20,11 @@
 
     // Builds a list with the table of contents in the current selector.
     // options:
-    //   content: where to look for headings
-    //   headings: string with a comma-separated list of selectors to be used as headings, ordered
-    //   by their relative hierarchy level
+    //   content:  Where to look for headings
+    //   headings: String with a comma-separated list of selectors to be used as headings, ordered
+    //             by their relative hierarchy level
+    //   idFormat: The format of the injected IDs, default: underscores replace spaces. 
+    //             Alternatives: 'kebab-case', 'camelCase'. Filters out invalid characters
     var toc = function (options) {
         return this.each(function () {
             var root = $(this),
@@ -34,32 +37,77 @@
 
             // Defaults: plugin parameters override data attributes, which override our defaults
             thisOptions = $.extend(
-                {content: "body", headings: "h1,h2,h3"},
-                {content: data.toc || undefined, headings: data.tocHeadings || undefined},
+                {
+                    content: "body",
+                    headings: "h1,h2,h3",
+                    idFormat: ''
+                },
+                {
+                    content: data.toc || undefined,
+                    headings: data.tocHeadings || undefined,
+                    idFormat: data.idFormat || undefined
+                },
                 options
             );
             headingSelectors = thisOptions.headings.split(",");
 
             // Set up some automatic IDs if we do not already have them
             $(thisOptions.content).find(thisOptions.headings).attr("id", function (index, attr) {
-                // In HTML5, the id attribute must be at least one character long and must not
-                // contain any space characters.
+                // In HTML5, the id attribute must be at least one character long and can only
+                // contain the characters [a-zA-Z0-9] and ISO 10646 characters U+00A0 and higher,
+                // plus the hyphen (-) and the underscore (_).
+                // ref: https://www.w3.org/TR/CSS2/syndata.html#characters
                 //
 				// We just use the HTML5 spec now because all browsers work fine with it.
                 // https://mathiasbynens.be/notes/html5-id-class
+
+                // Convert a string to camel case
+                // ref: https://stackoverflow.com/a/35976812/7942404
+                function toCamelCase(str){
+                    return str.split(' ').map(function(word,index){
+                        // If it is the first word make sure to lowercase all the chars.
+                        if(index == 0){
+                            return word.toLowerCase();
+                        }
+                        // If it is not the first word only upper case the first char and lowercase the rest.
+                        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                    }).join('');
+                }
+
                 var generateUniqueId = function (text) {
-                    // Generate a valid ID. Spaces are replaced with underscores. We also check if
-                    // the ID already exists in the document. If so, we append "_1", "_2", etc.
+                    // Generate a valid ID. Spaces are replaced depending on the idFormat setting. We also check if
+                    // the ID already exists in the document. If so, we append "1", "2", etc.
                     // until we find an unused ID.
 
                     if (text.length === 0) {
                         text = "?";
                     }
 
-                    var baseId = text.replace(/\s+/g, "_"), suffix = "", count = 1;
+                    // Sanitise text to have only single spaces and comply with allowed characters while preserving the single spaces
+                    text = text.replace(/\s+/g,' ').replace(/[^\w\-\s]/g,'');
+
+                    var spaceReplacement,
+                        baseId,
+                        suffix = "",
+                        count = 1;
+
+                    // Replace spaces depending on option setting
+                    switch ( thisOptions.idFormat ) {
+                        case 'kebab-case':
+                            spaceReplacement = '-';
+                            baseId = text.replace(/\s/g, spaceReplacement).toLowerCase();
+                            break;
+                        case 'camelCase':
+                            spaceReplacement = '';
+                            baseId = toCamelCase(text);
+                            break;
+                        default:
+                            spaceReplacement = '_';
+                            baseId = text.replace(/\s/g, spaceReplacement);
+                    }
 
                     while (document.getElementById(baseId + suffix) !== null) {
-                        suffix = "_" + count++;
+                        suffix = spaceReplacement + count++;
                     }
 
                     return baseId + suffix;
